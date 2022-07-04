@@ -479,13 +479,13 @@ int ExecZ80(Z80 *R,int RunCycles)
   {
     while(R->ICount>0)
     {
-#ifdef DEBUG
-      /* Turn tracing on when reached trap address */
-      if(R->PC.W==R->Trap) R->Trace=1;
-      /* Call single-step debugger, exit if requested */
-      if(R->Trace)
-        if(!DebugZ80(R)) return(R->ICount);
-#endif
+//#ifdef DEBUG
+//      /* Turn tracing on when reached trap address */
+//      if(R->PC.W==R->Trap) R->Trace=1;
+//      /* Call single-step debugger, exit if requested */
+//      if(R->Trace)
+//        if(!DebugZ80(R)) return(R->ICount);
+//#endif
 
       /* Read opcode and count cycles */
       I=OpZ80(R->PC.W++);
@@ -597,15 +597,15 @@ uint16_t RunZ80(Z80 *R)
 
   for(;;)
   {
-#ifdef DEBUG
-    /* Turn tracing on when reached trap address */
-    if(R->PC.W==R->Trap) R->Trace=1;
-    /* Call single-step debugger, exit if requested */
-    if(R->Trace)
-    {
-      if(!DebugZ80(R)) return(R->PC.W);
-    }
-#endif
+//#ifdef DEBUG
+//    /* Turn tracing on when reached trap address */
+//    if(R->PC.W==R->Trap) R->Trace=1;
+//    /* Call single-step debugger, exit if requested */
+//    if(R->Trace)
+//    {
+//      if(!DebugZ80(R)) return(R->PC.W);
+//    }
+//#endif
 
     /* Read opcode and count cycles */
     I=OpZ80(R->PC.W++);
