@@ -132,6 +132,13 @@ static retro_perf_tick_t max_frame_ticks = 0;
 
 static unsigned port0_device;
 
+/* Mouse in MSX joystick port 1 (fmsx_mouse). Auto plugs it in when the mouse
+ * moves or clicks and swaps the joystick back in when the joystick is used. */
+enum { MOUSE_AUTO, MOUSE_OFF, MOUSE_ALWAYS };
+static int mouse_mode = MOUSE_AUTO;
+static int mouse_x, mouse_y;     /* position counters fMSX differences, 8-bit wrap */
+static unsigned mouse_buttons;   /* bit 0 = left (F1), bit 1 = right (F2) */
+
 typedef struct
 {
    int retro;
@@ -726,7 +733,9 @@ static void check_variables(void)
    var.key = "fmsx_mode";
    var.value = NULL;
 
-   Mode = 0;
+   /* Keep the joystick port types: they aren't options, and clearing them on a
+    * mid-game option change left both ports with nothing plugged in. */
+   Mode &= MSX_JOYSTICKS;
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
    {
@@ -832,6 +841,19 @@ static void check_variables(void)
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value && strcmp(var.value, "Yes") == 0)
       Mode |= MSX_PATCHBDOS;
+
+   var.key = "fmsx_mouse";
+   var.value = NULL;
+   mouse_mode = MOUSE_AUTO;
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+   {
+      if (strcmp(var.value, "Off") == 0)
+         mouse_mode = MOUSE_OFF;
+      else if (strcmp(var.value, "Always") == 0)
+         mouse_mode = MOUSE_ALWAYS;
+   }
+   if (mouse_mode != MOUSE_AUTO)
+      SETJOYTYPE(0, mouse_mode == MOUSE_ALWAYS ? JOY_MOUSE : JOY_STICK);
 
    var.key = "fmsx_game_master";
    var.value = NULL;
@@ -1274,7 +1296,7 @@ bool retro_load_game(const struct retro_game_info *info)
       CasName=NULL;
    }
 
-   SETJOYTYPE(0,JOY_STICK);
+   SETJOYTYPE(0,mouse_mode == MOUSE_ALWAYS ? JOY_MOUSE : JOY_STICK);
    SETJOYTYPE(1,JOY_STICK);
 
    set_image_buffer_size(0);
@@ -1342,10 +1364,36 @@ unsigned int Joystick(void)
    return joystate;
 }
 
-/* TODO/FIXME - not implemented yet */
+/* Mouse in port 1 only. fMSX differences successive positions itself. */
 unsigned int Mouse(uint8_t N)
 {
-   return 0;
+   if (N != 0)
+      return 0;
+   return (mouse_buttons << 16) | ((mouse_y & 0xFF) << 8) | (mouse_x & 0xFF);
+}
+
+static void update_mouse(void)
+{
+   int dx, dy;
+
+   if (mouse_mode == MOUSE_OFF)
+      return;
+
+   dx = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X);
+   dy = input_state_cb(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_Y);
+   mouse_x = (mouse_x + dx) & 0xFF;
+   mouse_y = (mouse_y + dy) & 0xFF;
+   mouse_buttons =
+        (input_state_cb(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_LEFT)  ? 1 : 0)
+      | (input_state_cb(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_RIGHT) ? 2 : 0);
+
+   if (mouse_mode == MOUSE_AUTO)
+   {
+      if (dx || dy || mouse_buttons)
+         SETJOYTYPE(0, JOY_MOUSE);
+      else if (joystate & 0xFF)
+         SETJOYTYPE(0, JOY_STICK);
+   }
 }
 
 void PutImage(void)
@@ -1540,6 +1588,7 @@ void retro_set_environment(retro_environment_t cb)
       { "fmsx_ym2413_core", "YM2413 (FM-PAC / MSX-MUSIC) core; fMSX|NukeYKT" },
       { "fmsx_log_level", "fMSX logging; Off|Info|Debug|Spam" },
       { "fmsx_game_master", "Support Game Master; No|Yes" },
+      { "fmsx_mouse", "Mouse in joystick port 1; Auto|Off|Always" },
       { "fmsx_simbdos", "Simulate DiskROM disk access calls; No|Yes" },
       { "fmsx_autospace", "Use autofire on SPACE; No|Yes" },
       { "fmsx_allsprites", "Show all sprites; No|Yes" },
@@ -1685,6 +1734,8 @@ void retro_run(void)
       if (joypad_bits[1] & (1 << joymap[i].retro))
          JOY_SET(joymap[i].fmsx, 1);
    }
+
+   update_mouse();
 
    handle_tape_autotype();
 
